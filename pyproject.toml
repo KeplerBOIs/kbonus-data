@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kbonus-data"
+version = "0.1.0"
+description = "Read and download KBonus-BKG Kepler light curves"
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Jason Rowe" }]
+requires-python = ">=3.10"
+dependencies = ["numpy", "astropy", "requests"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+kbonus-data = "kbonus_data.download:main"
+
+[project.urls]
+Repository = "https://github.com/KeplerBOIs/kbonus-data"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
