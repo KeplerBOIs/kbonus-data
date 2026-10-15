@@ -92,6 +92,110 @@ kb.load_catalog("kois-nns")                  # also "mstars", "wd"
 Sources are named by KIC number when they have a KIC match and by Gaia DR3 id
 otherwise; the catalog's `fname` column gives the name for each row.
 
+## Light curves by quarter and channel
+
+Where a star fell on the detector (module, output, channel) changes every
+quarter and is recorded only in each file's per-quarter headers. An SQLite
+index of those headers lets you select every star on a channel in a quarter
+and read them as one array, e.g. to build systematics basis vectors.
+
+```python
+import kbonus_data as kb
+
+cq = kb.read_channel(5, 41)                  # Q5, channel 41 (module 13, output 1)
+cq = kb.read_channel(5, 41, kepmag=(None, 15), crowdsap=(0.9, None), limit=1000)
+
+cq.flux, cq.flux_err                         # PSF flux, (n_stars, n_cadences)
+cq.sap_flux, cq.sap_bkg, cq.centroid_row     # any per-quarter column, see columns=
+cq.sap_quality                               # integer; 0 where a star has no data
+cq.present                                   # False where a star has no row for a cadence (flux is NaN)
+cq.cadenceno, cq.time                        # cadence grid; time is the median BKJD over stars
+cq.targets                                   # one row per star: target, kic, kepmag, crowdsap, flfrcsap, ...
+
+cq.save("q05_ch41.npz"); cq = kb.ChannelQuarter.load("q05_ch41.npz")
+```
+
+The cadence grid holds every cadence at which any star on the channel has
+data. Rows are brightest first. Filters take a value, a list or a
+`(low, high)` range; `kepmag` drops sources with no KIC match, which are
+ordered by Gaia G. `dtype=np.float32` halves memory. A full channel is
+~6,000–7,000 stars and reads at ~40 stars/s from the NFS data directory.
+
+The index can also be queried directly:
+
+```python
+idx = kb.Index()
+idx.query(quarter=5, channel=41, crowdsap=(0.95, None))   # astropy Table, one row per star-quarter
+idx.query(quarter=5, module=13)                          # all four outputs of a module
+idx.quarters(8311864)                                    # channel of one star in every quarter
+idx.channel_counts(5)                                    # stars per channel
+idx.sql("SELECT channel, AVG(crowdsap) FROM observations WHERE quarter = 5 GROUP BY channel")
+
+kb.channel(13, 1), kb.module_output(41), kb.season(5)    # 41, (13, 1), 3
+```
+
+From the shell:
+
+```sh
+kbonus-data index status --quarter 5                     # stars per channel
+kbonus-data channel 5 41 --kepmag-max 15 --out q05_ch41.npz
+```
+
+### What the index holds
+
+`files`, one row per source (the highest version on disk):
+
+| column | |
+|---|---|
+| `target` | `kic-008311864` or `gaia-dr3-<id>` |
+| `path` | file path relative to the data directory |
+| `kic`, `gaia_id` | identifiers; `kic` is NULL for sources without a KIC match |
+| `ra`, `dec` | degrees |
+| `kepmag`, `gmag`, `bpmag`, `rpmag` | magnitudes; NULL when missing (the files use 1e20) |
+| `qdetect` | detection flag per quarter, one character for each of Q0–Q17 |
+| `n_quarters`, `version`, `size`, `mtime`, `tpforg` | |
+
+`observations`, one row per source and quarter, indexed on `(quarter, channel)`:
+
+| column | |
+|---|---|
+| `quarter`, `season` | season is 0–3 (`kb.season(q)`) |
+| `channel`, `module`, `output` | detector placement in that quarter |
+| `n_cadences` | rows in the quarter's table |
+| `qdetect` | that quarter's detection flag |
+| `crowdsap`, `flfrcsap`, `npixsap`, `sap` | aperture metrics: fraction of flux in the aperture from the target, fraction of the target's flux captured, pixel count, aperture mode |
+| `psffrac`, `pertrati`, `pertstd`, `iterneg` | PSF-model metrics from the per-quarter header |
+| `row`, `col`, `tpf_row`, `tpf_col` | mean SAP centroid and origin of the pixel cutout |
+| `hdu_offset`, `hdu_size`, `aperture_offset`, `aperture_size` | where the quarter's table and aperture sit in the file |
+
+`Index.query` joins the two and returns an astropy Table; `Index.sql` runs
+any query. The `errors` table lists files the last build could not read.
+
+Each quarter's table (`columns=` in `read_channel`) has `CADENCENO`, `TIME`,
+`FLUX`, `FLUX_ERR` (PSF photometry), `SAP_FLUX`, `SAP_FLUX_ERR`,
+`CENTROID_COLUMN`, `CENTROID_ROW`, `SAP_QUALITY`, `SAP_BKG`, `RED_CHI2`,
+`PSF_FLUX_NOVA` and `PSF_FLUX_ERR_NOVA`.
+
+The [preconditioning](https://github.com/KeplerBOIs/preconditioning) repo
+uses `read_channel` to build detrending basis vectors per quarter and
+channel; its README shows the workflow.
+
+### Building the index
+
+```sh
+tmux new -s kbonus-index 'kbonus-data index build --workers 12 2>&1 | tee -a $KBONUS_DATA_DIR/logs/index_build.log'
+```
+
+The index is `index/kbonus_index.sqlite` in the data directory (~2 GB). The
+build reads only header blocks, ~20 small reads per file, plus the byte offset
+of each per-quarter extension so that `read_channel` needs one read per star.
+On the NFS data directory it is limited by the storage server's random reads
+to ~20 files/s, about 9 hours for the full set; more workers do not help. It
+is resumable and scans only files not yet indexed, so re-run it after
+downloading more light curves. A newer version of a file replaces the old
+entry. Files that could not be read are listed in the `errors` table and
+retried on the next run.
+
 ## Downloading
 
 The full set is 606,900 files, 4.8 TB. There is no bundle for the whole set and

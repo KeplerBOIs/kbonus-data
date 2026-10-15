@@ -16,7 +16,7 @@ dependencies = ["numpy", "astropy", "requests"]
 test = ["pytest"]
 
 [project.scripts]
-kbonus-data = "kbonus_data.download:main"
+kbonus-data = "kbonus_data.cli:main"
 
 [project.urls]
 Repository = "https://github.com/KeplerBOIs/kbonus-data"
