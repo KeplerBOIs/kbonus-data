@@ -14,7 +14,10 @@ Tables::
                   aperture metrics, number of cadences, extension offsets
     errors        files that could not be read in the last build
 
-The database lives at ``<data dir>/index/kbonus_index.sqlite``.  Building it
+The database lives at ``<data dir>/index/kbonus_index.sqlite`` by default.  It
+stores file paths relative to the data directory, never absolute ones, so the
+data directory can be moved or copied with its index, or the index used on its
+own with the data elsewhere: ``Index(root=<data dir>, path=<index file>)``.  Building it
 reads ~20 small blocks from each of ~575,000 files; on the NFS-mounted data
 directory that is I/O-bound at a few tens of files per second, so the build
 is resumable and only scans files it has not seen.
@@ -256,7 +259,11 @@ def connect(path, readonly=False):
     path = Path(path)
     if readonly:
         if not path.exists():
-            raise FileNotFoundError(f"{path} not found. Build it with: kbonus-data index build")
+            raise FileNotFoundError(
+                f"index {path.resolve()} not found. Point root= (or $KBONUS_DATA_DIR) at the data "
+                "directory that holds index/, pass path= to the index file, or build it with: "
+                "kbonus-data index build"
+            )
         # wait out the commits of a build that is running at the same time
         return sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=60)
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -174,9 +174,10 @@ def read_channel(
     ``kepmag=(None, 15)``, ``crowdsap=(0.9, None)``, ``limit=500``.
     ``columns`` are per-quarter table columns to read; ``dtype`` (e.g.
     ``np.float32``) converts the float columns to save memory.  ``index`` is an
-    open :class:`Index` to reuse.
+    open :class:`Index` to reuse; its data directory is used unless ``root``
+    is given.
     """
-    root = data_dir(root)
+    root = data_dir(root if root is not None or index is None else index.root)
     columns = tuple(c.upper() for c in columns)
     extname = f"LIGHTCURVE_Q{quarter}"
     if index is None:

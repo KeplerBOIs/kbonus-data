@@ -183,3 +183,40 @@ def test_cli(root, tmp_path, capsys):
     out = tmp_path / "x.npz"
     assert main(["--root", str(root), "channel", "2", "41", "--out", str(out), "--kepmag-max", "15"]) == 0
     assert len(kb.ChannelQuarter.load(out)) == 2
+
+
+def test_default_data_dir_is_current_directory(tmp_path, monkeypatch):
+    monkeypatch.delenv("KBONUS_DATA_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert kb.data_dir().resolve() == tmp_path.resolve()
+    assert kb.local_lc_path(8311864).resolve() == (tmp_path / "lcs" / "0083" / kb.lc_filename(8311864)).resolve()
+
+
+def test_index_is_relocatable(root, tmp_path_factory, monkeypatch):
+    import shutil
+
+    tmp_path = tmp_path_factory.mktemp("other")  # outside the data directory
+
+    monkeypatch.delenv("KBONUS_DATA_DIR", raising=False)
+    kb.build_index(root, workers=2)
+    with kb.Index(root) as idx:
+        assert all(not p.startswith("/") for p in idx.sql("SELECT path FROM files")["path"])
+
+    moved = tmp_path / "elsewhere" / "kbonus"
+    shutil.copytree(root, moved)
+    shutil.rmtree(root)  # nothing may still point at the old location
+    with kb.Index(moved) as idx:
+        assert len(kb.read_channel(2, 41, index=idx)) == 3  # data location comes from the index
+    assert len(kb.read_channel(2, 41, moved)) == 3
+
+    db = tmp_path / "my_index.sqlite"
+    shutil.move(moved / "index" / "kbonus_index.sqlite", db)  # index kept apart from the data
+    with kb.Index(root=moved, path=db) as idx:
+        cq = kb.read_channel(2, 41, index=idx)
+        np.testing.assert_array_equal(cq.flux[0, :10], 12000 + np.arange(200, 210))
+
+    from kbonus_data.cli import main
+
+    out = tmp_path / "x.npz"
+    assert main(["--root", str(moved), "channel", "2", "41", "--db", str(db), "--out", str(out)]) == 0
+    assert len(kb.ChannelQuarter.load(out)) == 3

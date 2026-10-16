@@ -31,13 +31,33 @@ the example notebook.
 
 ## Data directory
 
-Data lives under `$KBONUS_DATA_DIR` (default `/opt/data2/rowe/kbonus`); every
-function also takes a `root=` argument.
+All data (catalogs, light curves, logs and the index) lives in one data
+directory. It is, in order of precedence:
+
+1. the `root=` argument of any function, or `--root` on the command line;
+2. `$KBONUS_DATA_DIR`;
+3. the current directory.
+
+Nothing in the package or the index refers to a particular machine, so the
+directory can be put anywhere and moved later. On our server the copy is at
+`/opt/data2/rowe/kbonus`, and the examples below use that location:
+
+```sh
+export KBONUS_DATA_DIR=/opt/data2/rowe/kbonus      # in ~/.bashrc or ~/.zshrc
+```
+
+```python
+import kbonus_data as kb
+lc = kb.read_lightcurve(8311864, root="/opt/data2/rowe/kbonus")   # or rely on $KBONUS_DATA_DIR
+```
+
+The directory holds:
 
 ```
 catalogs/                 the four catalog FITS files
 lcs/<prefix>/<file>       light curves
 logs/                     lists of failed downloads
+index/kbonus_index.sqlite the quarter/channel index (see below)
 ```
 
 `<prefix>` is the first four characters of the zero-padded KIC number
@@ -102,7 +122,8 @@ and read them as one array, e.g. to build systematics basis vectors.
 ```python
 import kbonus_data as kb
 
-cq = kb.read_channel(5, 41)                  # Q5, channel 41 (module 13, output 1)
+cq = kb.read_channel(5, 41)                  # Q5, channel 41 (module 13, output 1), from $KBONUS_DATA_DIR
+cq = kb.read_channel(5, 41, root="/opt/data2/rowe/kbonus")   # or name the data directory
 cq = kb.read_channel(5, 41, kepmag=(None, 15), crowdsap=(0.9, None), limit=1000)
 
 cq.flux, cq.flux_err                         # PSF flux, (n_stars, n_cadences)
@@ -126,7 +147,7 @@ NFS data directory, so about 3 minutes for a typical channel. Module 3
 The index can also be queried directly:
 
 ```python
-idx = kb.Index()
+idx = kb.Index("/opt/data2/rowe/kbonus")                 # or kb.Index() to use $KBONUS_DATA_DIR
 idx.query(quarter=5, channel=41, crowdsap=(0.95, None))   # astropy Table, one row per star-quarter
 idx.query(quarter=5, module=13)                          # all four outputs of a module
 idx.quarters(8311864)                                    # channel of one star in every quarter
@@ -139,9 +160,35 @@ kb.channel(13, 1), kb.module_output(41), kb.season(5)    # 41, (13, 1), 3
 From the shell:
 
 ```sh
-kbonus-data index status --quarter 5                     # stars per channel
-kbonus-data channel 5 41 --kepmag-max 15 --out q05_ch41.npz
+kbonus-data --root /opt/data2/rowe/kbonus index status --quarter 5      # stars per channel
+kbonus-data --root /opt/data2/rowe/kbonus channel 5 41 --kepmag-max 15 --out q05_ch41.npz
 ```
+
+### Where the index lives
+
+The index stores each file's path relative to the data directory
+(`lcs/0083/hlsp_..._lc.fits`), never an absolute path. You give the data
+location when you open it, so the same index file works wherever the light
+curves are:
+
+```python
+# default: the index inside the data directory, <root>/index/kbonus_index.sqlite
+idx = kb.Index(root="/opt/data2/rowe/kbonus")
+
+# the index kept somewhere else, e.g. a copy on fast local disk
+idx = kb.Index(root="/opt/data2/rowe/kbonus", path="/scratch/kbonus_index.sqlite")
+cq = kb.read_channel(5, 41, index=idx)       # light curves are read from idx.root
+```
+
+```sh
+kbonus-data --root /opt/data2/rowe/kbonus channel 5 41 --db /scratch/kbonus_index.sqlite
+```
+
+To move the data, copy the whole directory, index included, and point
+`$KBONUS_DATA_DIR` or `root=` at the new location; nothing needs rebuilding.
+Someone who has the light curves but not the index can copy just
+`kbonus_index.sqlite` (1.2 GB) instead of spending 11 hours rebuilding it. It
+is only valid for the same set of files, which is all of KBonus-BKG v1.0.
 
 ### What the index holds
 
@@ -185,6 +232,7 @@ channel; its README shows the workflow.
 ### Building the index
 
 ```sh
+export KBONUS_DATA_DIR=/opt/data2/rowe/kbonus
 tmux new -s kbonus-index 'kbonus-data index build --workers 12 2>&1 | tee -a $KBONUS_DATA_DIR/logs/index_build.log'
 ```
 
@@ -192,7 +240,7 @@ The index is `index/kbonus_index.sqlite` in the data directory (1.2 GB;
 606,900 sources, 6.5 million source-quarters). The
 build reads only header blocks, ~20 small reads per file, plus the byte offset
 of each per-quarter extension so that `read_channel` needs one read per star.
-On the NFS data directory it is limited by the storage server's random reads
+On our NFS-mounted copy it is limited by the storage server's random reads
 to ~16 files/s, 11 hours for the full set; more workers do not help. It
 is resumable and scans only files not yet indexed, so re-run it after
 downloading more light curves. A newer version of a file replaces the old
@@ -203,6 +251,24 @@ retried on the next run.
 
 The full set is 606,900 files, 4.8 TB. There is no bundle for the whole set and
 no AWS mirror, so files are fetched one by one from MAST.
+
+Files go into the data directory: the current directory unless you give
+`--root` or set `$KBONUS_DATA_DIR`. To download into the current directory:
+
+```sh
+mkdir kbonus && cd kbonus
+kbonus-data download catalogs                    # writes ./catalogs, ./lcs, ./logs
+```
+
+Our copy was downloaded to `/opt/data2/rowe/kbonus`, giving the location
+explicitly:
+
+```sh
+kbonus-data --root /opt/data2/rowe/kbonus download catalogs
+# or: export KBONUS_DATA_DIR=/opt/data2/rowe/kbonus, then omit --root
+```
+
+The commands, all of which take `--root`:
 
 ```sh
 kbonus-data download catalogs                    # 165 MB, lists every light curve
@@ -221,7 +287,7 @@ A pilot of 450 files ran at 23 MB/s with 8 workers and 33 MB/s with 16, which
 puts the full download at roughly 40 to 60 hours. Run it detached, e.g.
 
 ```sh
-tmux new -s kbonus 'kbonus-data download lcs --workers 16 2>&1 | tee -a kbonus_download.log'
+tmux new -s kbonus 'kbonus-data --root /opt/data2/rowe/kbonus download lcs --workers 16 2>&1 | tee -a /opt/data2/rowe/kbonus/logs/download.log'
 ```
 
 ## Tests

@@ -46,18 +46,20 @@ def _index(args):
 
 def _channel(args):
     from .channels import DEFAULT_COLUMNS, read_channel
+    from .index import Index
 
-    cq = read_channel(
-        args.quarter,
-        args.channel,
-        args.root,
-        columns=args.columns or DEFAULT_COLUMNS,
-        workers=args.workers,
-        progress=True,
-        kepmag=(args.kepmag_min, args.kepmag_max),
-        crowdsap=(args.crowdsap_min, None),
-        limit=args.limit,
-    )
+    with Index(args.root, args.db) as idx:
+        cq = read_channel(
+            args.quarter,
+            args.channel,
+            columns=args.columns or DEFAULT_COLUMNS,
+            workers=args.workers,
+            index=idx,
+            progress=True,
+            kepmag=(args.kepmag_min, args.kepmag_max),
+            crowdsap=(args.crowdsap_min, None),
+            limit=args.limit,
+        )
     out = args.out or f"kbonus_q{args.quarter:02d}_ch{args.channel:02d}.npz"
     cq.save(out)
     print(f"{len(cq)} stars x {cq.shape[1]} cadences written to {out}")
@@ -66,7 +68,7 @@ def _channel(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="kbonus-data", description="KBonus-BKG Kepler light curves")
-    parser.add_argument("--root", help="data directory (default: $KBONUS_DATA_DIR)")
+    parser.add_argument("--root", help="data directory (default: $KBONUS_DATA_DIR, else the current directory)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     download = sub.add_parser("download", help="download catalogs or light curves")
@@ -94,10 +96,10 @@ def main(argv=None):
     build.add_argument("--rebuild", action="store_true", help="rescan files already indexed")
     info = isub.add_parser("status", help="show index counts")
     info.add_argument("--quarter", type=int, help="also list sources per channel in this quarter")
-    for p in (build, info):
+    channel = sub.add_parser("channel", help="save all light curves of one quarter and channel to .npz")
+    for p in (build, info, channel):
         p.add_argument("--db", help="index file (default: <root>/index/kbonus_index.sqlite)")
 
-    channel = sub.add_parser("channel", help="save all light curves of one quarter and channel to .npz")
     channel.add_argument("quarter", type=int)
     channel.add_argument("channel", type=int)
     channel.add_argument("--out", help="output file (default kbonus_q<QQ>_ch<CC>.npz)")

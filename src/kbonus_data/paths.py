@@ -18,7 +18,7 @@ from pathlib import Path
 
 ARCHIVE_BASE = "https://archive.stsci.edu/hlsps/kbonus-bkg"
 DATA_DIR_ENV = "KBONUS_DATA_DIR"
-DEFAULT_DATA_DIR = "/opt/data2/rowe/kbonus"
+DEFAULT_DATA_DIR = "."  # the current directory
 HLSP_VERSION = "1.0"
 
 _FILENAME_RE = re.compile(
