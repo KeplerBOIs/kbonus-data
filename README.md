@@ -31,40 +31,83 @@ the example notebook.
 
 ## Data directory
 
-All data (catalogs, light curves, logs and the index) lives in one data
-directory. It is, in order of precedence:
+Everything lives in one data directory. Our copy is at
+`/opt/data2/rowe/kbonus`, which the examples use; put yours wherever there is
+room (4.8 TB for the full set) and substitute its path.
+
+### Layout
+
+```
+/opt/data2/rowe/kbonus/              the data directory
+├── catalogs/                        4 catalog FITS files, 165 MB
+│   ├── hlsp_kbonus-bkg_kepler_kepler_source-catalog_kepler_v1.0_cat.fits     every light curve, 606,900 rows
+│   ├── hlsp_kbonus-bkg_kepler_kepler_kois-nns-catalog_kepler_v1.0_cat.fits   KOIs and their neighbours
+│   ├── hlsp_kbonus-bkg_kepler_kepler_mstars-catalog_kepler_v1.0_cat.fits     M dwarfs
+│   └── hlsp_kbonus-bkg_kepler_kepler_wd-catalog_kepler_v1.0_cat.fits         white dwarfs
+├── index/
+│   └── kbonus_index.sqlite          quarter/channel index, 1.2 GB
+├── lcs/                             light curves, 606,900 files, 4.8 TB
+│   ├── 0007/ … 0129/                120 directories of KIC sources (541,399)
+│   │   └── hlsp_kbonus-bkg_kepler_kepler_kic-008300021_kepler_v1.0_lc.fits
+│   └── 2049/ … 2143/                44 directories of Gaia-only sources (65,501)
+│       └── hlsp_kbonus-bkg_kepler_kepler_gaia-dr3-2049134501869730432_kepler_v1.0_lc.fits
+└── logs/
+    ├── download.log                 progress of the download (from the tee in the command below)
+    ├── failed_<time>.txt            files a download run could not fetch
+    └── index_build.log              progress of the index build
+```
+
+Each light curve sits in `lcs/<prefix>/`, where `<prefix>` is the first four
+characters of the 9-digit zero-padded KIC number (`0083` for KIC 8311864,
+`008311864`) or of the Gaia DR3 source id (`2049`). This is the prefix MAST
+uses; it keeps directories under ~10,000 files. MAST's extra per-source level
+(`lcs/0083/008311864/<file>`) is dropped because each holds a single file.
+
+What needs which directory:
+
+| directory | written by | needed for |
+|---|---|---|
+| `catalogs/` | `kbonus-data download catalogs` | `load_catalog`, and the list of files to download |
+| `lcs/` | `kbonus-data download lcs` | reading any light curve |
+| `index/` | `kbonus-data index build` | `read_channel` and `Index` (quarter/channel selection) |
+| `logs/` | the download and index commands | nothing; for your information |
+
+Other files and directories in the data directory are ignored (ours has a
+`LCs_v111/` holding one test file), as are `.part` files left by an
+interrupted download.
+
+### Telling the package where it is
+
+The data directory is, in order of precedence:
 
 1. the `root=` argument of any function, or `--root` on the command line;
-2. `$KBONUS_DATA_DIR`;
+2. the `KBONUS_DATA_DIR` environment variable;
 3. the current directory.
 
-Nothing in the package or the index refers to a particular machine, so the
-directory can be put anywhere and moved later. On our server the copy is at
-`/opt/data2/rowe/kbonus`, and the examples below use that location:
-
-```sh
-export KBONUS_DATA_DIR=/opt/data2/rowe/kbonus      # in ~/.bashrc or ~/.zshrc
-```
+The simplest is to set `KBONUS_DATA_DIR` at the top of a script or notebook.
+It is read each time a function needs it, so set it before the first call
+(before or after `import kbonus_data`):
 
 ```python
+import os
+os.environ["KBONUS_DATA_DIR"] = "/opt/data2/rowe/kbonus"   # your data directory
+
 import kbonus_data as kb
-lc = kb.read_lightcurve(8311864, root="/opt/data2/rowe/kbonus")   # or rely on $KBONUS_DATA_DIR
+lc = kb.read_lightcurve(8311864)             # reads /opt/data2/rowe/kbonus/lcs/0083/...
 ```
 
-The directory holds:
+or for the shell, e.g. in `~/.bashrc` or `~/.zshrc`:
 
-```
-catalogs/                 the four catalog FITS files
-lcs/<prefix>/<file>       light curves
-logs/                     lists of failed downloads
-index/kbonus_index.sqlite the quarter/channel index (see below)
+```sh
+export KBONUS_DATA_DIR=/opt/data2/rowe/kbonus
 ```
 
-`<prefix>` is the first four characters of the zero-padded KIC number
-(`0083` for KIC 8311864) or of the Gaia DR3 source id (`2049`), the same
-prefix MAST uses. That gives 164 directories of at most ~10,000 files. MAST's
-extra per-source directory (`lcs/0083/008311864/<file>`) is dropped because
-each one holds a single file.
+or for one call: `kb.read_lightcurve(8311864, root="/opt/data2/rowe/kbonus")`,
+`kbonus-data --root /opt/data2/rowe/kbonus status`.
+
+Nothing in the package or the index refers to a particular machine. The
+index stores paths relative to the data directory, so the directory can be
+moved or copied whole and used from its new location.
 
 ## Reading light curves
 
@@ -120,10 +163,12 @@ index of those headers lets you select every star on a channel in a quarter
 and read them as one array, e.g. to build systematics basis vectors.
 
 ```python
+import os
+os.environ["KBONUS_DATA_DIR"] = "/opt/data2/rowe/kbonus"   # your data directory
+
 import kbonus_data as kb
 
-cq = kb.read_channel(5, 41)                  # Q5, channel 41 (module 13, output 1), from $KBONUS_DATA_DIR
-cq = kb.read_channel(5, 41, root="/opt/data2/rowe/kbonus")   # or name the data directory
+cq = kb.read_channel(5, 41)                  # Q5, channel 41 (module 13, output 1)
 cq = kb.read_channel(5, 41, kepmag=(None, 15), crowdsap=(0.9, None), limit=1000)
 
 cq.flux, cq.flux_err                         # PSF flux, (n_stars, n_cadences)
@@ -147,7 +192,7 @@ NFS data directory, so about 3 minutes for a typical channel. Module 3
 The index can also be queried directly:
 
 ```python
-idx = kb.Index("/opt/data2/rowe/kbonus")                 # or kb.Index() to use $KBONUS_DATA_DIR
+idx = kb.Index()                                         # index/kbonus_index.sqlite in the data directory
 idx.query(quarter=5, channel=41, crowdsap=(0.95, None))   # astropy Table, one row per star-quarter
 idx.query(quarter=5, module=13)                          # all four outputs of a module
 idx.quarters(8311864)                                    # channel of one star in every quarter
@@ -160,8 +205,9 @@ kb.channel(13, 1), kb.module_output(41), kb.season(5)    # 41, (13, 1), 3
 From the shell:
 
 ```sh
-kbonus-data --root /opt/data2/rowe/kbonus index status --quarter 5      # stars per channel
-kbonus-data --root /opt/data2/rowe/kbonus channel 5 41 --kepmag-max 15 --out q05_ch41.npz
+export KBONUS_DATA_DIR=/opt/data2/rowe/kbonus           # or give --root on each command
+kbonus-data index status --quarter 5                     # stars per channel
+kbonus-data channel 5 41 --kepmag-max 15 --out q05_ch41.npz
 ```
 
 ### Where the index lives
@@ -233,7 +279,8 @@ channel; its README shows the workflow.
 
 ```sh
 export KBONUS_DATA_DIR=/opt/data2/rowe/kbonus
-tmux new -s kbonus-index 'kbonus-data index build --workers 12 2>&1 | tee -a $KBONUS_DATA_DIR/logs/index_build.log'
+mkdir -p $KBONUS_DATA_DIR/logs
+tmux new -s kbonus-index "kbonus-data --root $KBONUS_DATA_DIR index build --workers 12 2>&1 | tee -a $KBONUS_DATA_DIR/logs/index_build.log"
 ```
 
 The index is `index/kbonus_index.sqlite` in the data directory (1.2 GB;
@@ -252,23 +299,19 @@ retried on the next run.
 The full set is 606,900 files, 4.8 TB. There is no bundle for the whole set and
 no AWS mirror, so files are fetched one by one from MAST.
 
-Files go into the data directory: the current directory unless you give
-`--root` or set `$KBONUS_DATA_DIR`. To download into the current directory:
+Files go into the data directory (see [Layout](#layout)). Set it before
+downloading; our copy was downloaded to `/opt/data2/rowe/kbonus`:
 
 ```sh
-mkdir kbonus && cd kbonus
-kbonus-data download catalogs                    # writes ./catalogs, ./lcs, ./logs
+export KBONUS_DATA_DIR=/opt/data2/rowe/kbonus       # where the data will go
+kbonus-data download catalogs                      # creates $KBONUS_DATA_DIR/catalogs/
 ```
 
-Our copy was downloaded to `/opt/data2/rowe/kbonus`, giving the location
-explicitly:
+`kbonus-data --root /opt/data2/rowe/kbonus download catalogs` does the same
+without the variable. With neither, files go into the current directory
+(`./catalogs/`, `./lcs/`, `./logs/`).
 
-```sh
-kbonus-data --root /opt/data2/rowe/kbonus download catalogs
-# or: export KBONUS_DATA_DIR=/opt/data2/rowe/kbonus, then omit --root
-```
-
-The commands, all of which take `--root`:
+The commands (all take `--root`):
 
 ```sh
 kbonus-data download catalogs                    # 165 MB, lists every light curve
@@ -287,7 +330,8 @@ A pilot of 450 files ran at 23 MB/s with 8 workers and 33 MB/s with 16, which
 puts the full download at roughly 40 to 60 hours. Run it detached, e.g.
 
 ```sh
-tmux new -s kbonus 'kbonus-data --root /opt/data2/rowe/kbonus download lcs --workers 16 2>&1 | tee -a /opt/data2/rowe/kbonus/logs/download.log'
+mkdir -p $KBONUS_DATA_DIR/logs
+tmux new -s kbonus "kbonus-data --root $KBONUS_DATA_DIR download lcs --workers 16 2>&1 | tee -a $KBONUS_DATA_DIR/logs/download.log"
 ```
 
 ## Tests
