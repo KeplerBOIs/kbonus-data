@@ -118,8 +118,10 @@ cq.save("q05_ch41.npz"); cq = kb.ChannelQuarter.load("q05_ch41.npz")
 The cadence grid holds every cadence at which any star on the channel has
 data. Rows are brightest first. Filters take a value, a list or a
 `(low, high)` range; `kepmag` drops sources with no KIC match, which are
-ordered by Gaia G. `dtype=np.float32` halves memory. A full channel is
-~6,000–7,000 stars and reads at ~40 stars/s from the NFS data directory.
+ordered by Gaia G. `dtype=np.float32` halves memory. A channel holds ~1,500
+to ~16,500 stars in a quarter (median ~3,900) and reads at ~20 stars/s from the
+NFS data directory, so about 3 minutes for a typical channel. Module 3
+(channels 5–8) failed during Q4 and has no data from then on.
 
 The index can also be queried directly:
 
@@ -186,11 +188,12 @@ channel; its README shows the workflow.
 tmux new -s kbonus-index 'kbonus-data index build --workers 12 2>&1 | tee -a $KBONUS_DATA_DIR/logs/index_build.log'
 ```
 
-The index is `index/kbonus_index.sqlite` in the data directory (~2 GB). The
+The index is `index/kbonus_index.sqlite` in the data directory (1.2 GB;
+606,900 sources, 6.5 million source-quarters). The
 build reads only header blocks, ~20 small reads per file, plus the byte offset
 of each per-quarter extension so that `read_channel` needs one read per star.
 On the NFS data directory it is limited by the storage server's random reads
-to ~20 files/s, about 9 hours for the full set; more workers do not help. It
+to ~16 files/s, 11 hours for the full set; more workers do not help. It
 is resumable and scans only files not yet indexed, so re-run it after
 downloading more light curves. A newer version of a file replaces the old
 entry. Files that could not be read are listed in the `errors` table and
