@@ -6,10 +6,8 @@ server's Content-Length and then renamed, so an interrupted run never leaves a
 truncated file behind.  Re-run the same command to continue.
 """
 
-import argparse
 import os
 import queue
-import sys
 import threading
 import time
 from pathlib import Path
@@ -17,7 +15,7 @@ from pathlib import Path
 import requests
 
 from .catalog import CATALOGS, catalog_path, catalog_url, lc_filenames
-from .paths import ARCHIVE_BASE, data_dir, lc_filename, lc_url, local_lc_path
+from .paths import ARCHIVE_BASE, data_dir, lc_url, local_lc_path
 
 CHUNK = 1 << 20
 TIMEOUT = (30, 120)  # connect, read (seconds)
@@ -170,48 +168,3 @@ def status(root=None):
         names = set(lc_filenames(name, root))
         present = len(names & have)
         print(f"  {name:9s} {present:7d} / {len(names):7d}  ({100 * present / len(names):.1f}%)")
-
-
-def main(argv=None):
-    parser = argparse.ArgumentParser(prog="kbonus-data", description=__doc__.split("\n")[0])
-    parser.add_argument("--root", help="data directory (default: $KBONUS_DATA_DIR)")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    download = sub.add_parser("download", help="download catalogs or light curves")
-    dsub = download.add_subparsers(dest="what", required=True)
-    dsub.add_parser("catalogs", help="download the four catalogs")
-    lcs = dsub.add_parser("lcs", help="download light curves (resumable)")
-    lcs.add_argument(
-        "--subset",
-        choices=sorted(CATALOGS),
-        default="source",
-        help="catalog whose light curves to fetch; 'source' is all 606,900 (default)",
-    )
-    lcs.add_argument("--targets", nargs="+", help="specific targets (KIC numbers or Gaia DR3 ids)")
-    lcs.add_argument("--limit", type=int, help="stop after this many missing files")
-    lcs.add_argument("--workers", type=int, default=8, help="parallel connections (default 8)")
-
-    sub.add_parser("status", help="show download progress per catalog")
-
-    args = parser.parse_args(argv)
-    if args.command == "status":
-        status(args.root)
-    elif args.what == "catalogs":
-        download_catalogs(args.root)
-    else:
-        if args.targets:
-            names = [lc_filename(target) for target in args.targets]
-        else:
-            if not catalog_path(args.subset, args.root).exists():
-                download_catalogs(args.root)
-            names = lc_filenames(args.subset, args.root)
-        if args.limit is not None:
-            have = downloaded_lc_names(args.root)
-            names = [n for n in dict.fromkeys(names) if n not in have][: args.limit]
-        failed = download_lightcurves(names, args.root, workers=args.workers)
-        return 1 if failed else 0
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
