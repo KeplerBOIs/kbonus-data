@@ -87,7 +87,7 @@ class LightCurve:
         return getattr(self, flux_name), getattr(self, err_name)
 
     def to_phot(self, kind="sap", time_zero=2454900.0, itime=LONG_CADENCE_DAYS, phot=None):
-        """Fill a bls_cuda ``transitPy5.phot_class``-style object.
+        """Fill a pytfit5 (bls_cuda) ``transitPy5.phot_class``-style object.
 
         ``phot`` is the object to fill (e.g. ``tpy5.phot_class()``); if omitted
         a plain namespace with the same attributes is returned, so bls_cuda is
