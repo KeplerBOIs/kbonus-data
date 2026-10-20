@@ -8,26 +8,39 @@ repos.
 
 ## Install
 
+For work on the KeplerBOIs project, set up the shared workspace described in
+the [KeplerBOIs workspace guide](https://github.com/KeplerBOIs/.github#readme):
+the repos are cloned side by side and installed, editable, into one virtual
+environment, so changes here are seen at once by every other repo.
+
+To install only this package:
+
 ```sh
 pip install git+https://github.com/KeplerBOIs/kbonus-data
 ```
 
-or, for development:
+or, to work on it on its own:
 
 ```sh
-git clone --recurse-submodules https://github.com/KeplerBOIs/kbonus-data
+git clone https://github.com/KeplerBOIs/kbonus-data
 pip install -e 'kbonus-data[test]'
 ```
 
-In another repo's `pyproject.toml`:
+The library needs only `numpy`, `astropy` and `requests`. The example
+notebook (`notebooks/`) also uses `matplotlib` and
+[`pytfit5`](https://github.com/jasonfrowe/bls_cuda) for the BLS search; both
+are in the workspace environment.
+
+Other KeplerBOIs repos list it in their `pyproject.toml` by name only:
 
 ```toml
-dependencies = ["kbonus-data @ git+https://github.com/KeplerBOIs/kbonus-data"]
+dependencies = ["kbonus-data"]
 ```
 
-The library needs only `numpy`, `astropy` and `requests`. The
-[`bls_cuda`](https://github.com/jasonfrowe/bls_cuda) submodule is used only by
-the example notebook.
+not as `kbonus-data @ git+https://...`. In the workspace, pip then uses the
+local editable copy; a direct URL would make pip replace it with a frozen copy
+from GitHub. kbonus-data is not on PyPI, so to install such a repo on its own,
+install kbonus-data from GitHub first.
 
 ## Data directory
 
@@ -138,10 +151,10 @@ q = kb.read_quarter(8311864, 5)
 q.data["CENTROID_ROW"], q.header["CROWDSAP"], q.aperture
 ```
 
-For `bls_cuda`:
+For [`pytfit5`](https://github.com/jasonfrowe/bls_cuda) (bls_cuda):
 
 ```python
-import transitPy5 as tpy5
+import pytfit5.transitPy5 as tpy5
 phot = lc.to_phot(kind="sap", phot=tpy5.phot_class())   # time = BJD - 2454900
 ```
 
