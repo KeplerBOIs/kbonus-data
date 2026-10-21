@@ -251,11 +251,12 @@ is only valid for the same set of files, which is all of KBonus-BKG v1.0.
 
 Our index can be downloaded from the
 [KeplerBOIs data page](https://kona.ubishops.ca/KeplerBOIs/) (534 MB
-gzipped). Querying it with `Index` needs no light curves:
+gzipped; password protected: ask Jason Rowe for the password, which `curl`
+asks for). Querying it with `Index` needs no light curves:
 
 ```sh
 mkdir -p "$KBONUS_DATA_DIR/index"
-curl -o "$KBONUS_DATA_DIR/index/kbonus_index.sqlite.gz" \
+curl -u keplerbois -o "$KBONUS_DATA_DIR/index/kbonus_index.sqlite.gz" \
      https://kona.ubishops.ca/KeplerBOIs/index/kbonus_index.sqlite.gz
 gunzip "$KBONUS_DATA_DIR/index/kbonus_index.sqlite.gz"
 ```
