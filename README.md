@@ -249,6 +249,17 @@ Someone who has the light curves but not the index can copy just
 `kbonus_index.sqlite` (1.2 GB) instead of spending 11 hours rebuilding it. It
 is only valid for the same set of files, which is all of KBonus-BKG v1.0.
 
+Our index can be downloaded from the
+[KeplerBOIs data page](https://kona.ubishops.ca/KeplerBOIs/) (534 MB
+gzipped). Querying it with `Index` needs no light curves:
+
+```sh
+mkdir -p "$KBONUS_DATA_DIR/index"
+curl -o "$KBONUS_DATA_DIR/index/kbonus_index.sqlite.gz" \
+     https://kona.ubishops.ca/KeplerBOIs/index/kbonus_index.sqlite.gz
+gunzip "$KBONUS_DATA_DIR/index/kbonus_index.sqlite.gz"
+```
+
 ### What the index holds
 
 `files`, one row per source (the highest version on disk):
